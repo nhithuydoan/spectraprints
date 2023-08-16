@@ -1,10 +1,20 @@
+"""
+MODULE LEVEL DOCS
+mypy
+codespell
+pylint
+"""
+
+import csv
 from pathlib import Path
 from openseize.file_io import annotations
-from typing import List, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import numpy.typing as npt
-from openseize import Producer
+from openseize.core.producer import Producer
+
+from spectraprints.core import arraytools
 
 
 def threshold(pro: Producer,
@@ -12,7 +22,42 @@ def threshold(pro: Producer,
               winsize: int,
               radius: Optional[int] = None,
 ) -> List[npt.NDArray[np.bool_]]:
-    """ """
+    """Thresholds the z-score of produced values using each standard deviation
+    in nstds.
+
+    Args:
+        pro:
+            A producer of ndarrays to be thresholded.
+        nstds:
+            A list of standard deviations to threshold normalized producer
+            values.
+        winsize:
+            The number of samples used to estimate the mean and standard
+            deviation to normalize the produced values by.
+        radius:
+            The max distance below which all intermediate samples between two
+            samples are interpolated to be False.
+
+    Examples:
+        >>> from openseize import producer
+        >>> import numpy as np
+        >>> # make a random array with 50 spikes in each row
+        >>> rng = np.random.default_rng(0)
+        >>> x = rng.normal(loc=0, scale=1.0, size=(4,1000))
+        >>> locs = rng.choice(np.arange(1000), size=(4,50), replace=False)
+        >>> for row, loc_ls in enumerate(locs):
+        ...     x[row, loc_ls] = 10
+        >>> # make a producer from spiked data and build masks
+        >>> pro = producer(x, chunksize=100, axis=-1)
+        >>> masks = threshold(pro, nstds=[2], winsize=100)
+        >>> mask = masks[0]
+        >>> # are the mask indices that are False equal to the locs provided?
+        >>> set(np.where(~mask)[0]) == set(locs.flatten())
+        True
+
+    Returns:
+        A list of 1-D boolean arrays one per standard dev. in nstds.
+    """
 
     pro.chunksize = winsize
     axis = pro.axis
@@ -35,7 +80,13 @@ def threshold(pro: Producer,
             cols =np.unique(cols + idx * winsize)
             mask[cols] = False
 
-        # TODO add merging 8/16/2023
+    # Fill between 2 False events with False if sample distance < radius
+    if radius:
+        for mask in masks:
+            for epoch in arraytools.aggregate1d(~mask, radius):
+                mask[slice(*epoch)] = False
+
+    return masks
 
 
 def artifact(path: Union[str, Path],
@@ -100,15 +151,80 @@ def artifact(path: Union[str, Path],
     return annotations.as_mask(annotes, size, fs, include=False)
 
 
+def state(path, labels, fs, winsize, include=True):
+    """Returns a boolean mask from a spindle sleep score text file.
+
+    Args:
+        path:
+            A path to a spindle file.
+        labels:
+            A list of labels to include or exclude depending on include
+            argument.
+        fs:
+            The sampling rate of the data this mask will be applied.
+        winsize:
+            The window length in seconds that spindle used to estimate states.
+        include:
+            A boolean indicating if labels should be included (i.e. True) and
+            all else False or labels should be excluded (i.e. False) from the
+            returned mask.
+
+    Examples:
+    >>> states = 'w w w w r n n r n w'.split()
+    >>> import tempfile
+    >>> base_path = tempfile.mkdtemp(prefix='test_')
+    >>> fp = Path(base_path).joinpath('test_state.csv')
+    >>> with open(fp, 'w') as outfile:
+    ...     writer = csv.writer(outfile)
+    ...     writer.writerows(list(enumerate(states)))
+    >>> mask = state(fp, labels=['w'], fs=5, winsize=2)
+    >>> probe = np.zeros(100, dtype=bool)
+    >>> probe[0:40] = True
+    >>> probe[-10:] = True
+    >>> np.allclose(mask, probe)
+    True
+
+    Returns:
+        A 1-D boolean array for masking data at a given sample rate.
+    """
+
+    with open(path, 'r') as infile:
+        reader = csv.reader(infile)
+        states = [row[1] for row in reader]
+
+    mask = np.array([state in labels for state in states], dtype=bool)
+    if not include:
+        mask = ~mask
+
+    mask = np.atleast_2d(mask)
+    result = np.repeat(mask, fs * winsize, axis=0)
+    return result.flatten(order='F')
+
+
 if __name__ == '__main__':
 
 
-    from openseize import demos
+    from openseize import demos, producer
 
+    """
     path = demos.paths.locate('annotations_001.txt')
 
     size = 3775 * 5000
     fs = 5000
     amask = artifact(path, size=size, labels=['rest', 'grooming'], fs=fs)
+    """
                      
+    # make a random array with 50 spikes in each row
+    rng = np.random.default_rng(0)
+    x = rng.normal(loc=0, scale=1.0, size=(4,1000))
+    locs = rng.choice(np.arange(1000), size=(4,50), replace=False)
+    for row, loc_ls in enumerate(locs):
+         x[row, loc_ls] = 10
+    # make a producer from spiked data and build masks
+    pro = producer(x, chunksize=100, axis=-1)
+    masks = threshold(pro, nstds=[2], winsize=100)
+    mask = masks[0]
+    # are the mask indices that are False equal to the locs provided?
+    #set(np.where(~mask)[0]) == set(locs.flatten())
+    
 
