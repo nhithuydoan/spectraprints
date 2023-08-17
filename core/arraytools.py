@@ -3,6 +3,35 @@ from collections import deque
 import numpy as np
 import numpy.typing as npt
 
+def discretize_bool(mask):
+    """Returns discrete start and stop indexes for True runs in arr.
+
+    Args:
+        arr:
+            A 1-D boolean array to discretize into events.
+    
+    Examples;
+        >>> import numpy as np
+        >>> x = np.array([1, 1, 0, 0, 0, 1, 1, 0, 1], dtype=bool)
+        >>> discretize_bool(x)
+        array([[0, 2], 
+               [5, 7],
+               [8, 9]])
+    
+    Returns:
+        An ndarray of shape events x 2
+
+    Notes:
+        The start, stop indices of each event follow python slicing conventions
+        where start is inclusive and stop is exclusive.
+    """
+
+    if mask[-1]:
+        mask = np.append(mask, False)
+
+    #prepend 0 for rhs of each diff change
+    changepoints = np.diff(mask, prepend=0)
+    return np.where(changepoints)[0].reshape(-1, 2)
 
 def aggregate1d(arr: npt.NDArray[np.bool_], radius: float):
     """Returns start, stop indices for runs of True elements in a 1D
