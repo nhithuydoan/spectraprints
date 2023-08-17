@@ -17,5 +17,6 @@ dependencies:
   # pypi packages
   - pip
   - pip:
+    - codespell
     - pytest-lazy-fixture
     - openseize
