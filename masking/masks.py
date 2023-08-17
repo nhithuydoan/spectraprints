@@ -1,19 +1,28 @@
-"""
-MODULE LEVEL DOCS
-mypy
-codespell
-pylint
+"""This module contains functions for building 1-D boolean masks. These masks
+may be built from human annotated text files, spindle state text files or
+computationally computed using a local z-score threshold.
+
+Functions:
+    threshold:
+        Returns a 1-D boolean by z-score thresholding produced values from
+        a producer.
+    artifact:
+        Returns a 1-D boolean by reading human created annotations stored in
+        a Pinnacle annotations file.
+    state:
+        Returns a 1-D boolean by reading Spindle detected sleep and wake states
+        from a Spindle formatted file.
+
 """
 
 import csv
 from pathlib import Path
-from openseize.file_io import annotations
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import numpy.typing as npt
 from openseize.core.producer import Producer
-
+from openseize.file_io import annotations
 from spectraprints.core import arraytools
 
 
@@ -62,8 +71,8 @@ def threshold(pro: Producer,
     pro.chunksize = winsize
     axis = pro.axis
 
-    # intialize some mask
-    masks = [np.ones(pro.shape[axis], dtype=bool) for std in nstds] 
+    # initialize some mask
+    masks = [np.ones(pro.shape[axis], dtype=bool) for std in nstds]
     for idx, arr in enumerate(pro):
 
         mu = np.mean(arr, axis=axis, keepdims=True)
@@ -141,7 +150,7 @@ def artifact(path: Union[str, Path],
     first = next(ann for ann in annotes if ann.label == a) if a else annotes[0]
     last = next(ann for ann in annotes if ann.label == b) if a else annotes[-1]
 
-    #filter the annotes for requested labels and filter between 
+    #filter the annotes for requested labels and filter between
     annotes = [ann for ann in annotes if ann.label in labels]
     annotes = [ann for ann in annotes if first.time <= ann.time <= last.time]
     # adjust the annote times relative to first annote
@@ -199,32 +208,3 @@ def state(path, labels, fs, winsize, include=True):
     mask = np.atleast_2d(mask)
     result = np.repeat(mask, fs * winsize, axis=0)
     return result.flatten(order='F')
-
-
-if __name__ == '__main__':
-
-
-    from openseize import demos, producer
-
-    """
-    path = demos.paths.locate('annotations_001.txt')
-
-    size = 3775 * 5000
-    fs = 5000
-    amask = artifact(path, size=size, labels=['rest', 'grooming'], fs=fs)
-    """
-                     
-    # make a random array with 50 spikes in each row
-    rng = np.random.default_rng(0)
-    x = rng.normal(loc=0, scale=1.0, size=(4,1000))
-    locs = rng.choice(np.arange(1000), size=(4,50), replace=False)
-    for row, loc_ls in enumerate(locs):
-         x[row, loc_ls] = 10
-    # make a producer from spiked data and build masks
-    pro = producer(x, chunksize=100, axis=-1)
-    masks = threshold(pro, nstds=[2], winsize=100)
-    mask = masks[0]
-    # are the mask indices that are False equal to the locs provided?
-    #set(np.where(~mask)[0]) == set(locs.flatten())
-    
-
