@@ -1,27 +1,36 @@
 import copy
 import functools
+import numbers
+import warnings
+from collections import abc
 from pathlib import Path
 from typing import Dict, Optional, Sequence, Tuple, Union
-import warnings
 
 import numpy as np
 import numpy.typing as npt
 from spectraprints.core import mixins
 
+
 class MetaArray(mixins.ViewInstance):
     """A representation of a numpy NDArray containing both the array &
-    coordinates, a dict of axes names and axis index values.
+    coordinates, a dict of axes names & index labels.
 
-    This is a simple object that stores ndarrays and their coordinates within
-    a python object. Better and more sophisticated objects such as xarrays
-    allow for arrays carrying metadata to be acted upon and propagate metadata
-    appropriately.
+    This simple object stores ndarrays & their coordinates. More sophisticated
+    objects such as xarrays allow for arrays carrying metadata to be acted upon
+    and propagate metadata appropriately. This does not occur with MetaArrays.
 
     Attrs:
         data:
             An N-dimensional numpy array to represent.
         **coords:
-            keyword arguments specifying the axis name and indices.
+            keyword arguments specifying the axis names & index labels. The
+            number of axes in coordinates must match the dims of data and the
+            length of labels along axis must match length of data along axis.
+                
+            #### Coordinate labels may be list 1-D arrays or range instances
+                arrays are converted to list
+
+            EFFICIENCY NOTE ABOUT RANGE AND ARRAYS
 
     Examples:
         >>> data = np.random.random((3, 4, 6))
@@ -46,64 +55,100 @@ class MetaArray(mixins.ViewInstance):
     """
 
     def __init__(self, data, **coords):
-        """Initialize this MetaArray with a numpy array and coordinates."""
+        """Initialize this MetaArray with an array & coordinates dictionary."""
 
         self.data = data
         self.coords = self._assign_coords(coords)
-        self.metadata = {}
         
     def _assign_coords(self, coords):
-        """ """
-       
-        shape = self.shape
-        result = {f'axis{idx}': np.arange(s) for idx, s in enumerate(shape)}
-        
-        if coords:
+        """Validates and assigns coordinates to this MetaArray.
 
-            if len(coords) != self.data.ndim:
-                msg = (f'The coordinate dimensions must match the data'
-                        'dimensions {len(coords)} != {self.data.ndim}')
-                raise ValueError(msg)
+        Args:
+            coords:
+                The axis names and axis index labels to use as coordinates for
+                this MetaArray. The length of the labels along each axis
+                must match data's shape along axis.
 
-            # copy since select method mutates coords
-            result = copy.deepcopy(coords)
-        
-        return result
+                #### Coordinate labels may be list 1-D arrays or range instances
+                arrays are converted to list
 
-    def assign(self, **metadata):
-        """ """
+        Returns:
+            A dictionary of coordinates.
 
-        self.metadata.update(metadata)
+        Raises:
+            A ValueError is issued if the dimensionality or shape of the
+            coordinates does not match data's dims. or shape 
+        """
+
+        default = {f'axis{ix}': range(s) for ix, s in enumerate(self.shape)}
+        coords = copy.deepcopy(coords) if coords else default
+
+        coords = {name: list(labels) if not isinstance(labels, range) else labels
+                  for name, labels in coords.items()}
+
+        # validate dims & shape of coordinates
+        if tuple(len(v) for v in coords.values()) != self.shape:
+            msg = (f"The shape of the coordinates must match data's shape"
+                    "{tuple(len(v) for v in coords.values())} != {self.shape}")
+            raise ValueError(msg)
+
+        return coords
 
     @property
     def shape(self):
-        """Returns the shape of this Archive."""
+        """Returns the shape of this MetaArray."""
 
         return self.data.shape
 
-    def select(self, **filters):
-        """ """
+    def to_indices(self, 
+                   name,
+                   labels: Union[str, numbers.Number, Sequence, npt.NDArray],
+    ) -> Tuple[int, Sequence]: 
+        """Converts a coordinate axis name & labels to numeric data axis & 
+        indices.
 
-        coords, data = copy.deepcopy(self.coords), self.data
+        Args:
+            name:
+                The name of a coordinate axis.
+        """
+
+
+        axis = tuple(self.coords).index(name)
+        if not isinstance(labels, (abc.Sequence, np.ndarray)):
+            labels = [labels]
+        indices = [self.coords[name].index(label) for label in labels]
+
+        return axis, indices
+
+    def select(self, **selections):
+        """Takes requested labeled elements along each axis in selections.
         
-        axes = tuple(self.coords)
-        for name, elements in filters.items():
+        Args:
+            **selections:
+              A list of named axes and labels to take from MetaArray.
 
-            # get data's axis number and indices to keep along axis
-            axis = axes.index(name)
+        Returns:
+            A MetaArray whose data and coordinates contain only selections.
 
-            if isinstance(elements, np.ndarray):
-                locs = elements
-            else:
-                locs = [self.coords[name].index(el) for el in elements]
-            
+        FIXME Note about slow selection for large label sequences
+        """
+        
+        # coords will be mutated so copy for new instance
+        coords = copy.deepcopy(self.coords)
+        data = self.data
+
+        for name, labels in selections.items():
+
+            axis, indices = self.to_indices(name, labels)
+
             # filter the data and update axes indices
-            data = np.take(data, locs, axis=axis)
-            coords.update({name: elements})
+            data = np.take(data, indices, axis=axis)
+            coords.update({name: labels})
 
         cls = type(self)
         instance = cls(data, **coords)
-        instance.metadata = self.metadata
+
+        metadata = {key: val for key, val in self.__dict__.items() if  
         return instance
 
 
@@ -178,8 +223,10 @@ if __name__ == '__main__':
     x = np.random.random(s)
     animals = [f'animal {idx}' for idx in range(s[0])]
     drugs = [letter for letter, _ in zip(string.ascii_letters, range(s[1]))]
+    samples = np.arange(s[-1])
+    samples = range(s[-1])
 
-    m = MetaArray(x, animals=animals, drugs=drugs, samples=np.arange(s[-1]))
+    m = MetaArray(x, animals=animals, drugs=drugs, samples=samples)
     g = m.select(drugs=['a'])
 
     #k = MetaMask(awake=[1,1,0,1,0,0], threshold_6=[0, 1, 1, 1, 1, 1])
