@@ -1,9 +1,21 @@
+"""A module for creating objects that represent numpy arrays and carry metadata.
+
+Classes:
+    MetaArray:
+        A representation of N-dimensional arrays with a full coordinate system
+        carrying labels at each index along each axis. This object provides
+        support for label indexing like pandas or xarrays but does not support
+        numpy array operations.
+    MetaMask:
+        A callable that names and stores 1D boolean mask. On call, it can
+        combine any combination of these stored masks using an callable
+        implementing element-wise logic rules.
+"""
+
 import copy
 import functools
-import numbers
 import warnings
-from collections import abc
-from pathlib import Path
+from numbers import Number
 from typing import Dict, Optional, Sequence, Tuple, Union
 
 import numpy as np
@@ -11,27 +23,25 @@ import numpy.typing as npt
 from spectraprints.core import mixins
 
 
+# Type definitions
+Coords = Dict[str, Union[Sequence, range]]
+
+
 class MetaArray(mixins.ViewInstance):
     """A representation of a numpy NDArray containing both the array &
     coordinates, a dict of axes names & index labels.
 
-    This simple object stores ndarrays & their coordinates. More sophisticated
-    objects such as xarrays allow for arrays carrying metadata to be acted upon
-    and propagate metadata appropriately. This does not occur with MetaArrays.
+    MetaArrays offer simple storage and data selection by labels as opposed to
+    numpy numerical indexing. They are not a valid type for numerical processing
+    with numpy. More sophisticated software such as pandas or xarray support
+    numerical operations. 
 
     Attrs:
         data:
             An N-dimensional numpy array to represent.
-        **coords:
-            keyword arguments specifying the axis names & index labels. The
-            number of axes in coordinates must match the dims of data and the
-            length of labels along axis must match length of data along axis.
-                
-            #### Coordinate labels may be list 1-D arrays or range instances
-                arrays are converted to list
-
-            EFFICIENCY NOTE ABOUT RANGE AND ARRAYS
-
+        coords:
+            A dictionary of axis string name keys and index label values.
+            
     Examples:
         >>> data = np.random.random((3, 4, 6))
         >>> trials = [f'trial_{idx}' for idx in range(data.shape[0])]
@@ -54,23 +64,40 @@ class MetaArray(mixins.ViewInstance):
         True
     """
 
-    def __init__(self, data, **coords):
-        """Initialize this MetaArray with an array & coordinates dictionary."""
+    def __init__(self,
+                 data: npt.NDArray,
+                 **coords: Union[Sequence, npt.NDArray, range],
+    ) -> None:
+        """Initialize this MetaArray with an array & coordinates dictionary.
+
+        Args:
+            data:
+                An N-dimensional numpy array to represent.
+            coords:
+                A dictionary of axis name keys and index label values. The axis
+                names must be strings and label values must be sequence-like
+                objects (list, tuples, 1d arrays) or range instances.  If
+                a sequence, the elements may be of any type. The count & order
+                of the axes in coords must match the count & order of axes in
+                data and the number of labels for an axis must match the
+                corresponding length of data along axis. If using 1-D array(s)
+                for labeling, be aware these will be converted to list with
+                slower label lookup. If possible, consider replacing with
+                range(s).
+        """
 
         self.data = data
         self.coords = self._assign_coords(coords)
-        
-    def _assign_coords(self, coords):
+
+    def _assign_coords(self,
+                       coords: Dict[str, Union[Sequence, npt.NDArray, range]]
+
+    ) -> Coords:
         """Validates and assigns coordinates to this MetaArray.
 
         Args:
             coords:
-                The axis names and axis index labels to use as coordinates for
-                this MetaArray. The length of the labels along each axis
-                must match data's shape along axis.
-
-                #### Coordinate labels may be list 1-D arrays or range instances
-                arrays are converted to list
+                See MetaArray's initializer for argument description.
 
         Returns:
             A dictionary of coordinates.
@@ -81,18 +108,20 @@ class MetaArray(mixins.ViewInstance):
         """
 
         default = {f'axis{ix}': range(s) for ix, s in enumerate(self.shape)}
-        coords = copy.deepcopy(coords) if coords else default
+        result = copy.deepcopy(coords) if coords else default
 
-        coords = {name: list(labels) if not isinstance(labels, range) else labels
-                  for name, labels in coords.items()}
+        # convert labels for all axes to list instances
+        result = {name: list(labels) if not isinstance(labels, range) else
+                  labels for name, labels in coords.items()}
 
         # validate dims & shape of coordinates
-        if tuple(len(v) for v in coords.values()) != self.shape:
-            msg = (f"The shape of the coordinates must match data's shape"
-                    "{tuple(len(v) for v in coords.values())} != {self.shape}")
+        coord_shape = tuple(len(v) for v in result.values())
+        if coord_shape != self.shape:
+            msg = ("The shape of the coordinates must match data's shape"
+                    f"{coord_shape} != {self.shape}")
             raise ValueError(msg)
 
-        return coords
+        return result
 
     @property
     def shape(self):
@@ -100,58 +129,79 @@ class MetaArray(mixins.ViewInstance):
 
         return self.data.shape
 
-    def to_indices(self, 
-                   name,
-                   labels: Union[str, numbers.Number, Sequence, npt.NDArray],
-    ) -> Tuple[int, Sequence]: 
-        """Converts a coordinate axis name & labels to numeric data axis & 
-        indices.
+    @property
+    def metadata(self):
+        """Returns all non data and coordinate attributes of this MetaArray."""
+
+        metadata = {}
+        for key, value in self.__dict__.items():
+            if key not in ['data', 'coords']:
+                metadata.update({key: value})
+
+        return metadata
+
+    def to_indices(self,
+                   name: str,
+                   labels: Sequence,
+    ) -> Tuple[int, Sequence]:
+        """Converts labels along a named axis in coordinates to numeric indices.
 
         Args:
             name:
-                The name of a coordinate axis.
+                The name of an axis in coordinates.
+            labels:
+                The name(s) of labels along axis to convert to indices.
+
+        Returns:
+            A tuple containing the numeric axis & indices of data that match the
+            supplied axis name and labels.
         """
 
-
         axis = tuple(self.coords).index(name)
-        if not isinstance(labels, (abc.Sequence, np.ndarray)):
-            labels = [labels]
         indices = [self.coords[name].index(label) for label in labels]
 
         return axis, indices
 
-    def select(self, **selections):
-        """Takes requested labeled elements along each axis in selections.
+    def select(self,
+               **selections: Union[Number, str, Sequence, npt.NDArray],
+    ) -> 'MetaArray':
+        """Returns a new MetaArray by slicing this MetaArray with axis names &
+        labels in selections.
         
         Args:
             **selections:
-              A list of named axes and labels to take from MetaArray.
+                Keyword arguments specifying an axis name and labels to slice
+                this MetaArray with.
 
         Returns:
-            A MetaArray whose data and coordinates contain only selections.
-
-        FIXME Note about slow selection for large label sequences
+            A MetaArray whose data & coordinates contain only selections.
+            MetaArray attributes from the presliced MetaArray are copied without
+            change to the new (returned) instance.
         """
-        
+
         # coords will be mutated so copy for new instance
         coords = copy.deepcopy(self.coords)
         data = self.data
 
         for name, labels in selections.items():
 
+            # all labels converted to list for to_indices
+            labels = [labels] if isinstance(labels, Number) else list(labels)
             axis, indices = self.to_indices(name, labels)
 
             # filter the data and update axes indices
             data = np.take(data, indices, axis=axis)
             coords.update({name: labels})
 
+        # build an instance and reassign metadata without change
         cls = type(self)
         instance = cls(data, **coords)
+        instance.__dict__.update(self.metadata)
 
-        metadata = {key: val for key, val in self.__dict__.items() if  
         return instance
 
 
+# pylint: disable-next=too-few-public-methods
 class MetaMask(mixins.ViewInstance):
     """A callable that stores & returns element-wise combinations of 1-D
     boolean masks.
@@ -163,9 +213,9 @@ class MetaMask(mixins.ViewInstance):
     """
 
     def __init__(self,
-                 metadata: Optional[Dict] = None, 
+                 metadata: Optional[Dict] = None,
                  **named_masks,
-    ) -> Tuple[str, npt.NDArray[np.bool_]]:
+    ) -> None:
         """Initialize this MetaMask with metadata and named mask to store.
         
         Args:
@@ -178,7 +228,8 @@ class MetaMask(mixins.ViewInstance):
         self.__dict__.update(**named_masks)
         self.metadata = {} if not metadata else metadata
 
-    def __call__(self, *names, logical=np.logical_and):
+    def __call__(self, *names, logical=np.logical_and,
+    ) -> Tuple[str, npt.NDArray[np.bool_]]:
         """Returns the element-wise logical combination of all mask with name in
         names.
 
@@ -188,32 +239,25 @@ class MetaMask(mixins.ViewInstance):
             logical:
                 A callable that accepts and combines two 1-D boolean masks.
 
-        Reutrns:
+        Returns:
             A tuple containing a combined string name and a 1-D boolean array,
             the element-wise combination of each named mask.
         """
 
         submasks = [getattr(self, name) for name in names]
-        
+
         lengths = np.array([len(m) for m in submasks])
         min_length = np.min(lengths)
         if any(lengths - min_length):
-            
+
             msg = (f'Mask lengths are inconsistent lengths = {lengths}.'
                     'Truncating masks to minimum length = {min_length}')
             warnings.warn(msg)
-            
-            submasks = [mask[:minima] for mask in submasks]
-        
+
+            submasks = [mask[:min_length] for mask in submasks]
+
         name = '_'.join(names)
         return name, functools.reduce(logical, submasks)
-
-        
-
-
-        
-        
-
 
 
 if __name__ == '__main__':
@@ -223,7 +267,6 @@ if __name__ == '__main__':
     x = np.random.random(s)
     animals = [f'animal {idx}' for idx in range(s[0])]
     drugs = [letter for letter, _ in zip(string.ascii_letters, range(s[1]))]
-    samples = np.arange(s[-1])
     samples = range(s[-1])
 
     m = MetaArray(x, animals=animals, drugs=drugs, samples=samples)
