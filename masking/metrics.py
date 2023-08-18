@@ -30,7 +30,6 @@ def _tp(mask, actual):
     y = set(np.flatnonzero(actual))
     return len(x.intersection(y))
 
-
 def _tn(mask, actual):
     """Returns the number of True Negatives between two 1-D arrays of binary
     classifications.
@@ -54,7 +53,6 @@ def _tn(mask, actual):
     x = set(np.flatnonzero(~mask))
     y = set(np.flatnonzero(~actual))
     return len(x.intersection(y))
-
 
 def _fp(mask, actual):
     """Returns the number of False Positives between two 1-D arrays of binary
@@ -80,7 +78,6 @@ def _fp(mask, actual):
     y = actual.astype(int)
     return len(np.where((x-y) > 0)[0])
 
-
 def _fn(mask, actual):
     """Returns the number of False Negatives between two 1-D arrays of binary
     classifications.
@@ -105,7 +102,6 @@ def _fn(mask, actual):
     y = actual.astype(int)
     return len(np.where((y- x) > 0)[0])
 
-
 def accuracy(tp, tn, fp, fn):
     """Returns the accuracy between two 1-D boolean classification arrays.
 
@@ -118,7 +114,6 @@ def accuracy(tp, tn, fp, fn):
 
     return (tp + tn) / (tp + tn + fp + fn)
 
-
 def sensitivity(tp, fn):
     """Returns the sensitivity between two 1-D boolean classification arrays.
 
@@ -129,7 +124,6 @@ def sensitivity(tp, fn):
     """
 
     return tp / (tp + fn)
-
 
 def specificity(tn, fp):
     """Returns the specificity between two 1-D boolean classification arrays.
@@ -142,7 +136,6 @@ def specificity(tn, fp):
     """
 
     return tn / (tn + fp)
-
 
 def precision(tp, fp):
     """Returns the precision between two 1-D boolean classification arrays.
