@@ -55,7 +55,7 @@ class MetaArray(mixins.ViewInstance):
         ...     print(f'{axis}: {indices}')
         trial: ['trial_0', 'trial_1', 'trial_2']
         count: ['count_0', 'count_1', 'count_2', 'count_3']
-        time: [0 1 2 3 4 5]
+        time: [0, 1, 2, 3, 4, 5]
         >>> z = m.select(trial=['trial_0', 'trial_2'], time=np.arange(6))
         >>> z.shape
         (2, 4, 6)
@@ -207,9 +207,9 @@ class MetaMask(mixins.ViewInstance):
     boolean masks.
     
     Examples:
-        >>> m = MetaMasks(x=[1, 0, 0, 1], y=[0, 1, 0, 1])
-        >>> m('x', 'y', np.logical_and)
-        [0, 0, 0, 1]
+        >>> m = MetaMask(x=[1, 0, 0, 1], y=[0, 1, 0, 1])
+        >>> m('x', 'y', logical=np.logical_and)
+        ('x + y', array([False, False, False,  True]))
     """
 
     def __init__(self,
@@ -256,20 +256,5 @@ class MetaMask(mixins.ViewInstance):
 
             submasks = [mask[:min_length] for mask in submasks]
 
-        name = '_'.join(names)
+        name = ' + '.join(names)
         return name, functools.reduce(logical, submasks)
-
-
-if __name__ == '__main__':
-
-    import string
-    s = (3, 2, 10)
-    x = np.random.random(s)
-    animals = [f'animal {idx}' for idx in range(s[0])]
-    drugs = [letter for letter, _ in zip(string.ascii_letters, range(s[1]))]
-    samples = range(s[-1])
-
-    m = MetaArray(x, animals=animals, drugs=drugs, samples=samples)
-    g = m.select(drugs=['a'])
-
-    #k = MetaMask(awake=[1,1,0,1,0,0], threshold_6=[0, 1, 1, 1, 1, 1])
