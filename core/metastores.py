@@ -226,7 +226,7 @@ class MetaMask(mixins.ViewInstance):
         """
 
         self.__dict__.update(**named_masks)
-        self.metadata = {} if not metadata else metadata
+        self.metadata = {} if metadata is None else metadata
 
     def __call__(self, *names, logical=np.logical_and,
     ) -> Tuple[str, npt.NDArray[np.bool_]]:
