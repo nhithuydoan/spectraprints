@@ -149,7 +149,18 @@ def precision(tp, fp):
     return tp / (tp + fp)
 
 def percent_within(mask, actual):
-    """ """
+    """Counts the number of True values in mask that are within True runs in
+    actual.
+
+    Args:
+        mask:
+            A 1-D boolean of estimated mask values from thresholding.
+        actual:
+            A 1-D boolean obtained from a human annotations file.
+            
+    Returns:
+        The count of mask that are between consecutive True values in actual.
+    """
 
     events = arraytools.discretize_bool(~actual).flatten()
     detected = np.flatnonzero(~mask)
