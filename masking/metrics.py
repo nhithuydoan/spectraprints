@@ -152,10 +152,10 @@ def percent_within(mask, actual):
     """ """
 
     events = arraytools.discretize_bool(~actual).flatten()
-    detected = np.flatnonzero(~arr)
+    detected = np.flatnonzero(~mask)
 
     # locate where detected would be inserted into events
     insertions = np.searchsorted(events, detected, 'right')
     odds = [x for x in insertions if x % 2 == 1]
 
-    len(odds) / len(detected)
+    return len(odds) / len(detected)
