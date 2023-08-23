@@ -50,6 +50,8 @@ def preprocess(epath, channels, fs, M, start, stop, chunksize=30e5, axis=-1):
     stop = reader.shape[axis] if not stop else stop
     if stop - start < reader.shape[axis]:
         pro = masks.between_pro(reader, start, stop, chunksize, axis)
+    else:
+        pro = producer(reader, chunksize, axis)
 
     # Notch filter the producer
     notch = iir.Notch(fstop=60, width=6, fs=fs)
@@ -293,7 +295,7 @@ def evaluate(dirpath, savepath=None, ncores=None):
 if __name__ == '__main__':
 
 
-    """
+    """ 
     basepath = Path('/media/matt/Zeus/jasmine/stxbp1')
 
     efile = 'CW0DI2_P097_KO_92_30_3dayEEG_2020-05-07_09_54_11.edf'
@@ -304,8 +306,8 @@ if __name__ == '__main__':
 
     result = evaluate_metamask(epath, apath, spath)
     """
-    
+
+   
     dirpath = Path('/media/matt/Zeus/jasmine/ube3a')
     performances = evaluate(dirpath,
             savepath='/media/matt/Zeus/sandy/results/ube3a_mask_performances.pkl')
-
