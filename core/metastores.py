@@ -228,6 +228,12 @@ class MetaMask(mixins.ViewInstance):
         self.__dict__.update(**named_masks)
         self.metadata = {} if metadata is None else metadata
 
+    @property
+    def names(self):
+        """Returns the list of named masks in this Metamask."""
+
+        return [name for name in self.__dict__ if name != 'metadata']
+
     def __call__(self, *names, logical=np.logical_and,
     ) -> Tuple[str, npt.NDArray[np.bool_]]:
         """Returns the element-wise logical combination of all mask with name in
@@ -251,7 +257,7 @@ class MetaMask(mixins.ViewInstance):
         if any(lengths - min_length):
 
             msg = (f'Mask lengths are inconsistent lengths = {lengths}.'
-                    'Truncating masks to minimum length = {min_length}')
+                   f'Truncating masks to minimum length = {min_length}')
             warnings.warn(msg)
 
             submasks = [mask[:min_length] for mask in submasks]
