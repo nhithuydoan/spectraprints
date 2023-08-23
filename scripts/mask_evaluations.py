@@ -1,14 +1,16 @@
+import pickle
 import time
-from functools import partial
+from collections import defaultdict
 from multiprocessing import Pool
 from pathlib import Path
 
 from openseize import producer
-from openseize import file_io
+from openseize.file_io import edf, annotations, path_utils
 from openseize.filtering import iir
 from openseize.resampling import resampling
 
 from spectraprints.masking import masks, metrics
+from spectraprints.core import concurrency
 from spectraprints.core.metastores import MetaMask
 
 
@@ -41,7 +43,7 @@ def preprocess(epath, channels, fs, M, start, stop, chunksize=30e5, axis=-1):
         A producer of preprocessed values.
     """
 
-    reader = file_io.edf.Reader(epath)
+    reader = edf.Reader(epath)
     reader.channels = channels
 
     start = 0 if not start else start
@@ -141,7 +143,7 @@ def make_metamask(epath, apath, spath, verbose=False):
     STATE_LABELS = [['w'], ['r', 'n']]
     STATE_WINSIZE = 4
 
-    with file_io.annotations.Pinnacle(apath, start=6) as reader:
+    with annotations.Pinnacle(apath, start=6) as reader:
         annotes = reader.read()
 
     # preprocess a producer for between 'Start' & 'Stop' annotes
@@ -171,20 +173,20 @@ def make_metamask(epath, apath, spath, verbose=False):
     return MetaMask(annotated=annotated, **thresholded, **stated)
 
 
-def evaluate_one(epath, apath, spath):
+def evaluate_metamask(epath, apath, spath, verbose=True):
     """Evaluates threshold masks built from one EEG, annotation & spindle file.
 
     This function evaluates the masks defined by the fixed arguments in
     make_metamask. It computes the accuracies, sensitivities, specificities,
     precisions and percent_withins for each std in NSTDS.
 
+    Returns:
+        A nested dict keyed on metrics then keyed on mask name of metric results
+        (e.g. {'accuracy': {'awake + threshold=3: 0.9776, ...}})
     """
 
-    accuracies = {}
-    sensitivities = {}
-    specificities = {}
-    precisions = {}
-    perc_withins = {}
+    result = {'accuracy': {}, 'sensitivity': {}, 'specificity': {}, 
+              'precision': {}, 'perc_within': {}}
 
     metamask = make_metamask(epath, apath, spath)
     
@@ -193,7 +195,7 @@ def evaluate_one(epath, apath, spath):
     detected = [metamask('awake', attr) for attr, _ in metamask.__dict__.items()
             if 'threshold' in attr]
 
-    for name, mask in detected:
+    for mask_name, mask in detected:
 
         # compare metrics of Falses
         tp = metrics._tp(~mask, ~ann_mask)
@@ -201,36 +203,97 @@ def evaluate_one(epath, apath, spath):
         fp = metrics._fp(~mask, ~ann_mask)
         fn = metrics._fn(~mask, ~ann_mask) 
 
-        accuracies[name] = metrics.accuracy(tp, tn, fp, fn)
-        sensitivities[name] = metrics.sensitivity(tp, fn)
-        specificities[name] = metrics.specificity(tn, fp)
-        precisions[name] = metrics.precision(tp, fp)
+        result['accuracy'][mask_name] = metrics.accuracy(tp, tn, fp, fn)
+        result['sensitivity'][mask_name] = metrics.sensitivity(tp, fn)
+        result['specificity'][mask_name] = metrics.specificity(tn, fp)
+        result['precision'][mask_name] = metrics.precision(tp, fp)
+        result['perc_within'][mask_name] = metrics.percent_within(mask, 
+                                                                  ann_mask)
 
-        # percent withins
-        perc_withins[name] = metrics.percent_within(mask, ann_mask)
+    if verbose:
+        print(f'Completed mask evaluation for file: {epath.stem}')
 
-    return accuracies, sensitivities, specificities, precisions, perc_withins
+    return result
 
 
-def evaluate(dirpaths, save_path, ncores=None):
-    """ """
+def evaluate(dirpath, savepath=None, ncores=None):
+    """Computes the accuracy, sensitivity, specificity, precision and
+    percent_within for each eeg, annotation, and spindle file pairing in
+    dirpath and stores the performances to a dict.
+
+    The performance dict is keyed on each metric and each value is a list of
+    metric values one per file pairing (animal) in dirpath.
+
+    Args:
+        dirpath:
+            A directory containing edf, pinnacle annotations and spindle files
+            to pair by path stem.
+        savepath:
+            A path location to save the performance dict to.
+        ncores:
+            The number of processing cores to utilize. If None, all the
+            available cores will be used.
+
+    Returns:
+        A dict of performances containing the performance of each file pairing
+        in dirpath.
+
+    Stores:
+        A pickle of the performance dict at savepath.
+    """
+
 
     t0 = time.perf_counter()
 
-    # 1 and 2 should be in single_evaluate func
-    # 1. in each process build a mask
-    # 2. compute tp, tn, fp, fn and all metrics
-    #
-    # store metrics to dict and save
+    # get file names by glob patterns with matching suffixes
+    epaths = list(Path(dirpath).glob('*.edf'))
+    apaths = list(Path(dirpath).glob('*.txt'))
+    spaths = list(Path(dirpath).glob('*.csv'))
 
+    # collate the files by animal names
+    # use regex matching to match filenames using animal name
+    # TODO openseize's re_match only matches for two sets of filenames
+    # would be nice to expand to any number of sets. Here is a workaround
+    a = path_utils.re_match(epaths, apaths, r'\w+_')
+    b = path_utils.re_match(epaths, spaths, r'\w+_')
+    paths = []
+    for (epath, apath), (epath, spath) in zip(a, b):
+        paths.append((epath, apath, spath))
 
-    pass
+    workers = concurrency.set_cores(ncores, len(paths))
+    with Pool(workers) as pool:
+        processed = pool.starmap(evaluate_metamask, paths)
+
+    performances = {'accuracy': defaultdict(list),
+                    'sensitivity': defaultdict(list),
+                    'specificity': defaultdict(list), 
+                    'precision': defaultdict(list),
+                    'perc_within': defaultdict(list)}
+
+    for result in processed:
+        for metric_name, perf_dict in result.items():
+            for mask_name, value in perf_dict.items():
+                performances[metric_name][mask_name].append(value)
+
+    performances['names'] = [epath.stem for epath in epaths]
+    print(f'Processed {len(paths)} files in {time.perf_counter() - t0} s')
+
+    if not savepath:
+        savepath = Path(dirpath).joinpath('mask_performances.pkl')
+
+    with open(savepath, 'wb') as outfile:
+        pickle.dump(performances, outfile)
+
+    return performances
+
+            
+
 
 
 if __name__ == '__main__':
 
-    from pathlib import Path
 
+    """
     basepath = Path('/media/matt/Zeus/jasmine/stxbp1')
 
     efile = 'CW0DI2_P097_KO_92_30_3dayEEG_2020-05-07_09_54_11.edf'
@@ -239,7 +302,10 @@ if __name__ == '__main__':
 
     epath, apath, spath = [basepath.joinpath(x) for x in [efile, afile, sfile]]
 
-    acc, sens, spec, prec, pwithin = evaluate_one(epath, apath, spath)
-
-
+    result = evaluate_metamask(epath, apath, spath)
+    """
+    
+    dirpath = Path('/media/matt/Zeus/jasmine/ube3a')
+    performances = evaluate(dirpath,
+            savepath='/media/matt/Zeus/sandy/results/ube3a_mask_performances.pkl')
 
