@@ -308,6 +308,6 @@ if __name__ == '__main__':
     """
 
    
-    dirpath = Path('/media/matt/Zeus/jasmine/ube3a')
+    dirpath = Path('/media/sandy/Data_A/jasmine/data/ube3a/')
     performances = evaluate(dirpath,
-            savepath='/media/matt/Zeus/sandy/results/ube3a_mask_performances.pkl')
+            savepath='/media/sandy/Data_A/sandy/results/ube3a_mask_performances.pkl')
