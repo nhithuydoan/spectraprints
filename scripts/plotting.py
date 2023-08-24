@@ -1,32 +1,49 @@
-def draw_boxplot(data = dict, xlabel = str, ylabel = str, title = str, labels = List[str],
-                 show_pts = False, **kwargs):
+from typing import Dict, List, Optional
+from matplotlib import pyplot as plt
+import numpy as np
+import pickle
+
+def boxplot_dict(data: Dict, show_data: bool = False, jitter: float = 0,
+                 **kwargs):
+    """Boxplots the data in dictionary using keys as labels.
+
+    Args:
+        data:
+            Dataset containing named arrays to boxplot.
+        show_data:
+            Boolean indicating if individual data points should be overlayed on
+            the boxplots.
+        jitter:
+            The maximum x-displacement per sequence in data if show_data
+            otherwise this parameter is ignored.
+        kwargs:
+            Any valid keyword argument for matplotlib's boxplot.
+    
+    Returns:
+        A matplotlib axes instance.
     """
-    This function takes dictionary data and draw a boxplot.
     
-    Args: data: dataset in form of dictionary with keys and values. All
-    variables should have the same length.  xlabel: label of x-axis ylabel:
-    label of y-axis title: title of the plot show_pts: return a jitterplot
-    overlay the boxplot if the argument is True labels: take a list of string to
-    create names for x variables. If the list is empty, function will use name
-    from the dataset as variable names kwargs: any valid key word arguments are
-    passed into matplotlib's boxplot function.
-    
-    """
-    
-    data = data
-    pro.chunksize = winsize
     fig, ax = plt.subplots()
-    if not labels:
-        labels = list(data.keys())
-    else:
-        labels = labels
-    ax.boxplot(data.values(), medianprops = dict(color = "black", linewidth = 1.5),labels = labels)
-    if show_pts == True:
-        for i, d in enumerate(data):
-            y = data[d]
-            x = np.random.normal(i + 1, 0.04, len(y))
-            plt.scatter(x, y)
-    plt.xlabel(xlabel, fontsize=12)
-    plt.ylabel(ylabel, fontsize=12)
-    plt.title(title, weight = 'bold', fontsize = 14)
-    plt.show()
+    
+    groups = ["Threshold = 3","Threshold = 4", "Threshold = 5", "Threshold = 6"]
+    ax.boxplot(data.values(), labels=groups, **kwargs)
+    if show_data:
+        for idx, values in enumerate(data.values(), 1):
+            locs = np.random.uniform(-jitter, jitter, len(values)) + idx
+            plt.scatter(locs, values)
+    return ax
+
+if __name__ == '__main__':
+    fp = '/media/sandy/Data_A/sandy/results/ube3a_mask_performances.pkl'
+    with open(fp, 'rb') as infile:
+        ube3a_perfs = pickle.load(infile)
+    var_list = ['accuracy','sensitivity','specificity','precision','perc_within']
+    for var in var_list:
+        data = ube3a_perfs[var]
+        ax = boxplot_dict(data = data, show_data=True, jitter= 0.05)
+        plt.title(var.capitalize(), size =12)
+        plt.xlabel("Masking at different thresholds")
+        plt.ylabel("Similarity to human-annotated note (%)")
+        name = ["Threshold = 3","Threshold = 4", "Threshold = 5", "Threshold = 6"]
+        plt.show()
+
