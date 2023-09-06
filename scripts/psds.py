@@ -7,6 +7,7 @@ from pathlib import Path
 from openseize import producer
 from openseize.file_io import edf, path_utils
 from openseize.filtering import iir
+from openseize.resampling import resampling
 from openseize.spectra import estimators
 
 from spectraprints.masking import masks
@@ -25,7 +26,7 @@ AXIS = -1
 START, STOP = None, None
 
 # Thresholding Args
-NSTDS = [3, 4, 5, 6]
+NSTDS = [5]
 WINSIZE = 1.5E4 # @ FS = 250 THIS IS 60 SECS OF DATA
 RADIUS = 125 # IN SAMPLES
 
@@ -70,6 +71,8 @@ def preprocess(epath, channels, fs, M, start, stop, chunksize, axis):
     stop = reader.shape[axis] if not stop else stop
     if stop - start < reader.shape[axis]:
         pro = masks.between_pro(reader, start, stop, chunksize, axis)
+    else:
+        pro = producer(reader, chunksize, axis)
 
     # Notch filter the producer
     notch = iir.Notch(fstop=60, width=6, fs=fs)
@@ -116,13 +119,20 @@ def make_metamask(epath, spath, verbose=False):
 def process_file(epath, spath, verbose=False):
     """ """
 
+    # there is some real ineffeciency here because we preprocess to get
+    # threshold masks and then preprocess again to get psd estimates. Look to
+    # see if this is avoidable
+    #
+    # We won't be able to really see how long this function takes until we have
+    # the full spindle for 72 hours
+
     t0 = time.perf_counter()
 
     metamask = make_metamask(epath, spath)
     
 
     mask_names = metamask.names
-    thresholded_names = [name for name in mask_names if 'threshold' in name]
+    threshold_names = [name for name in mask_names if 'threshold' in name]
     state_names = [name for name in mask_names if name in ['awake', 'sleep']]
     
     result = {}
@@ -139,6 +149,21 @@ def process_file(epath, spath, verbose=False):
         cnt, freqs, psd = estimators.psd(maskpro, fs=DFS)
         result[combo_name] = (cnt, freqs, psd)
 
+    print(f'PSDs for {epath.stem} computed in {time.perf_counter()-t0} secs.')
+
     # FIXME what is a unique name where animals recorded from and then treated?
     return Path(epath).stem, result
+
+
+if __name__ == '__main__':
+
+    basepath = Path('/media/matt/Zeus/jasmine/stxbp1')
+
+    efile = 'CW0DI2_P097_KO_92_30_3dayEEG_2020-05-07_09_54_11.edf'
+    sfile = 'CW0DI2_P097_KO_92_30_3dayEEG_2020-05-07_09_54_11_sleep_states.csv'
+    epath = basepath.joinpath(efile)
+    spath = basepath.joinpath(sfile)
+
+    result = process_file(epath, spath)
+
 
