@@ -132,12 +132,14 @@ def make_metamask(epath, apath, spath, verbose=False):
 
     # thresholding Args
     NSTDS = [3, 4, 5, 6]
-    WINSIZE = 1.5E4 # @ FS = 250 THIS IS 60 SECS OF DATA
+    #WINSIZE = 1.5E4 # @ FS = 250 THIS IS 60 SECS OF DATA
+    WINSIZE = 1.5E5 # @ FS = 250 THIS IS 600 SECS OF DATA
     RADIUS = 125 # THIS IS IN SAMPLES
 
     # annotation Args
     # TODO - need more flexibility in artifact mask like regex
-    LABELS = ['Artifact', 'Artifact ','water_drinking','water_drinking ']
+    LABELS = ['Artifact', 'Artifact ','water_drinking','water_drinking '
+              '']
     DFS = FS // M
     BETWEEN = ['Start', 'Stop']
 
@@ -170,7 +172,7 @@ def make_metamask(epath, apath, spath, verbose=False):
     if verbose:
         name = Path(epath).stem
         print(f' Completed building MetaMask for {name}'
-               ' in {time.perf_counter() - t0} s')
+              f' in {time.perf_counter() - t0} s')
 
     return MetaMask(annotated=annotated, **thresholded, **stated)
 
@@ -294,20 +296,26 @@ def evaluate(dirpath, savepath=None, ncores=None):
 
 if __name__ == '__main__':
 
+    import numpy as np
+    basepath = Path('/media/matt/Zeus/jasmine/ube3a')
 
-    """ 
-    basepath = Path('/media/matt/Zeus/jasmine/stxbp1')
-
-    efile = 'CW0DI2_P097_KO_92_30_3dayEEG_2020-05-07_09_54_11.edf'
-    afile = 'CW0DI2_P097_KO_92_30_3dayEEG_2020-05-07_09_54_11.txt'
-    sfile = 'CW0DI2_P097_KO_92_30_3dayEEG_2020-05-07_09_54_11_sleep_states.csv'
+    efile = 'DL00B4_P043_nUbe3a_19_56_3dayEEG_2019-04-07_14_32_34.edf'
+    afile = 'DL00B4_P043_nUbe3a_19_56_3dayEEG_2019-04-07_14_32_34.txt'
+    sfile = ('DL00B4_P043_nUbe3a_19_56_3dayEEG_'
+             '2019-04-07_14_32_34_ALLEN_CW_day2_sleep_states.csv')
 
     epath, apath, spath = [basepath.joinpath(x) for x in [efile, afile, sfile]]
 
-    result = evaluate_metamask(epath, apath, spath)
-    """
+    metamask = make_metamask(epath, apath, spath, verbose=True)
 
-   
-    dirpath = Path('/media/sandy/Data_A/jasmine/data/ube3a/')
+    save_path = '/media/matt/Zeus/sandy/results/DL00B4_P043_masks_merge125.pkl'
+    with open(save_path, 'wb') as outfile:
+        pickle.dump(metamask, outfile)
+
+
+    """   
+    dirpath = Path('/media/matt/Zeus/jasmine/ube3a/')
     performances = evaluate(dirpath,
-            savepath='/media/sandy/Data_A/sandy/results/ube3a_mask_performances.pkl')
+        savepath=('/media/matt/Zeus/sandy/results/'
+                  'ube3a_mask_performances_avg10mins.pkl'))
+    """
