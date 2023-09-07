@@ -63,8 +63,26 @@ def pair_paths(paths, pattern=r'[^_]+'):
 
     return result
 
-def combine(path, other, num_hours=24, fs=5000):
-    """ """
+def combine(ls, hour, fs):
+    """ This function takes files in list and produce a new edf file with the
+    desired length.    
+    Args:
+        ls: 
+            A list contains all edf files.
+        hour:
+            The desired length for each edf.
+        fs:
+            The sampling rate of the files, assuming all files are sampled at the 
+            same rate.
+    """
+    stop_sample = hour*fs*3600
+    for animal in ls:
+        all_arr = []
+        for i in animal:
+            file = edf.Reader(i)
+            arr = file.read(0, stop_sample)
+            all_arr.append(arr)
+        new_file = np.concatenate(all_arr, axis = 0)
 
     # sandy TODO
     # 1. make a reader for path and other
