@@ -100,7 +100,7 @@ def combine(path, other, time, fs, save_dir=None):
     arrs = [reader.read(0, time * 3600 * fs) for reader in readers]
     data = np.concatenate(arrs, axis=-1)
 
-    header = copy.deepcopy(readers.header)
+    header = copy.deepcopy(readers[0].header)
     header.num_records = data.shape[-1] / header.samples_per_record[0]
 
     name = path.stem + '_COMBINED'
