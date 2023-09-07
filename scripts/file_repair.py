@@ -2,10 +2,17 @@
 recording problems such as power-outages. It joins the files together into
 a single EDF."""
 
-from pathlib import Path
+import copy
 import re
+from pathlib import Path
 
 from openseize.file_io import edf
+
+#TODO
+def validate_lengths(dirpath, minimum=24):
+    """Validates that all files in dirpath exceed minimum number of hours."""
+
+    pass
 
 def locate(dirpath, fs, expected=72):
     """Locates EDF files in dirpath whose duration in hours is less than
@@ -63,43 +70,56 @@ def pair_paths(paths, pattern=r'[^_]+'):
 
     return result
 
-def combine(ls, hour, fs):
-    """ This function takes files in list and produce a new edf file with the
-    desired length.    
+def combine(path, other, time, fs, save_dir=None):
+    """Read n_hours of data from the start of each EDF file in path and other
+    and writes the combined data to a new EDF file in save_dir.
+
     Args:
-        ls: 
-            A list contains all edf files.
-        hour:
-            The desired length for each edf.
+        path:
+            A path to an edf file
+        other:
+            A path to another edf file
+        time:
+            The number of hours to take from the start of each EDF file to write
+            to the new combined EDF file.
+        fs:
+            The sampling rate of the EDF data located at path and other.
+        save_dir:
+            An optional directory to write the combined EDF file to. If None,
+            the combined file will be written to the same dir as path.
         fs:
             The sampling rate of the files, assuming all files are sampled at the 
             same rate.
+
+    Returns:
+        None
     """
-    stop_sample = hour*fs*3600
-    for animal in ls:
-        all_arr = []
-        for i in animal:
-            file = edf.Reader(i)
-            arr = file.read(0, stop_sample)
-            all_arr.append(arr)
-        new_file = np.concatenate(all_arr, axis = 0)
 
-    # sandy TODO
-    # 1. make a reader for path and other
-    # 2. read 24 hours from each into arrays x and y
-    # 3. concatenate x and y
-    # 4. what should be changed in the header prior to writing
-    # 5 make a filename
-    # 5. explore edf.Writer
+    # FIXME Sort path and other
+    readers = [edf.Reader(fp) for fp in (path, other)]
+    arrs = [reader.read(0, time * 3600 * fs) for reader in readers]
+    data = np.concatenate(arrs, axis=-1)
 
+    header = copy.deepcopy(readers.header)
+    header.num_records = data.shape[-1] / header.samples_per_record[0]
 
+    name = path.stem + '_COMBINED'
+    parent = path.parent
+    if save_dir:
+        parent = save_dir
+    write_path = Path(parent).joinpath(new_name).with_suffix(path.suffix)
+
+    with edf.Writer(write_path) as writer:
+        writer.write(header, data, channels=reader.channels)
 
 
 
 if __name__ == '__main__':
 
-    dirpath = '/media/matt/Zeus/STXBP1_High_Dose_Exps_3/'
+    dirpath = '/media/matt/Zeus/STXBP1_High_Dose_Exps_3/short_files/'
 
     shorts = locate(dirpath, fs=5000)
     paired = pair_paths(shorts)
 
+    path, other = paired[0]
+    combine(path, other, time=24, fs=5000, save_dir=None)
