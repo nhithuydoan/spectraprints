@@ -102,7 +102,7 @@ def combine(path, other, time, fs, save_dir=None):
     # FIXME Sort path and other
     readers = [edf.Reader(fp) for fp in (path, other)]
     arrs = [reader.read(0, time * 3600 * fs) for reader in readers]
-    arrs = np.concatenate(arrs, axis=-1)
+    data  = np.concatenate(arrs, axis=-1)
 
     header = copy.deepcopy(readers[0].header)
     header['num_records'] = int(data.shape[-1] / header.samples_per_record[0])
@@ -122,11 +122,11 @@ if __name__ == '__main__':
 
 
     dirpath = '/media/sandy/Data_A/sandy/STXBP1_High_Dose_Exps_3/short_files/'
-
+    save_dir = '/media/sandy/Data_A/sandy/STXBP1_High_Dose_Exps_3/short_files_combined/'
     shorts = locate(dirpath, fs=5000)
     paired = pair_paths(shorts)
     for tup in range(len(paired)):
         path, other = paired[tup]
-        print([path, other])
-       # header = combine(path, other, time=24, fs=5000, save_dir=None)
+        #print([path, other])
+        header = combine(path, other, time=24, fs=5000, save_dir=save_dir)
 
