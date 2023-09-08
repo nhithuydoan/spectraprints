@@ -5,6 +5,7 @@ a single EDF."""
 import copy
 import re
 from pathlib import Path
+import numpy as np
 
 from openseize.file_io import edf
 
@@ -98,28 +99,29 @@ def combine(path, other, time, fs, save_dir=None):
     # FIXME Sort path and other
     readers = [edf.Reader(fp) for fp in (path, other)]
     arrs = [reader.read(0, time * 3600 * fs) for reader in readers]
-    data = np.concatenate(arrs, axis=-1)
+    arrs = np.concatenate(arrs, axis=-1)
 
     header = copy.deepcopy(readers[0].header)
-    header.num_records = data.shape[-1] / header.samples_per_record[0]
+    header['num_records'] = int(data.shape[-1] / header.samples_per_record[0])
 
-    name = path.stem + '_COMBINED'
+    new_name = path.stem + '_COMBINED'
     parent = path.parent
     if save_dir:
         parent = save_dir
     write_path = Path(parent).joinpath(new_name).with_suffix(path.suffix)
 
     with edf.Writer(write_path) as writer:
-        writer.write(header, data, channels=reader.channels)
+        writer.write(header, data, channels=[0,1,2,3])
 
 
 
 if __name__ == '__main__':
 
-    dirpath = '/media/matt/Zeus/STXBP1_High_Dose_Exps_3/short_files/'
+
+    dirpath = '/media/sandy/Data_A/sandy/STXBP1_High_Dose_Exps_3/short_files/'
 
     shorts = locate(dirpath, fs=5000)
     paired = pair_paths(shorts)
-
-    path, other = paired[0]
-    combine(path, other, time=24, fs=5000, save_dir=None)
+    for tup in paired:
+        path, other = paired[tup]
+        header = combine(path, other, time=24, fs=5000, save_dir=None)
