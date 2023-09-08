@@ -108,14 +108,8 @@ def combine(path, other, time, fs, minimum=24, save_dir=None):
     readers = sorted(readers, key=lambda r: r.header['start_date'])
     # validate the lengths of the readers
     [validate_length(reader) for reader in readers]
-
-    # read data into a pre-allocated array
-    nsamples = time * 2 * 3600 * fs
-    data = np.zeros_like(reader.shape[0], 2 * nsamples)
-    for idx, reader in enumerate(readers):
-        start, stop = idx * nsamples, (idx+1) * nsamples
-        data[:, start : stop] = reader.read(0, nsamples)
-        reader.close()
+    arrs = [reader.read(time * fs * 3600) for reader in readers]
+    data = np.concatenate(arrs, axis=-1)
 
     header = copy.deepcopy(readers[0].header)
     header['num_records'] = data.shape[-1] / header.samples_per_record[0]
