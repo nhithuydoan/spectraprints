@@ -6,13 +6,18 @@ import copy
 import re
 from pathlib import Path
 
+import numpy as np
+
 from openseize.file_io import edf
 
-#TODO
-def validate_lengths(dirpath, minimum=24):
-    """Validates that all files in dirpath exceed minimum number of hours."""
 
-    pass
+def validate_length(reader, minimum, fs):
+    """Validates that a reader instance contains at least minimum hours of
+    data."""
+
+    if reader.shape[-1] / (3600 * fs) < minimum:
+        msg = f'Reader at path {reader.path} has less than {minimum} hours.'
+        raise ValueError(msg)
 
 def locate(dirpath, fs, expected=72):
     """Locates EDF files in dirpath whose duration in hours is less than
@@ -70,7 +75,7 @@ def pair_paths(paths, pattern=r'[^_]+'):
 
     return result
 
-def combine(path, other, time, fs, save_dir=None):
+def combine(path, other, time, fs, minimum=24, save_dir=None):
     """Read n_hours of data from the start of each EDF file in path and other
     and writes the combined data to a new EDF file in save_dir.
 
@@ -84,24 +89,36 @@ def combine(path, other, time, fs, save_dir=None):
             to the new combined EDF file.
         fs:
             The sampling rate of the EDF data located at path and other.
+        fs:
+            The sampling rate of the files, assuming all files are sampled at the
+            same rate.
+        minimum:
+            The minimum number of hours for a single file to be combined with
+            another.
         save_dir:
             An optional directory to write the combined EDF file to. If None,
             the combined file will be written to the same dir as path.
-        fs:
-            The sampling rate of the files, assuming all files are sampled at the 
-            same rate.
 
     Returns:
         None
     """
 
-    # FIXME Sort path and other
+    # create readers & sort by header start dates
     readers = [edf.Reader(fp) for fp in (path, other)]
-    arrs = [reader.read(0, time * 3600 * fs) for reader in readers]
-    data = np.concatenate(arrs, axis=-1)
+    readers = sorted(readers, key=lambda r: r.header['start_date'])
+    # validate the lengths of the readers
+    [validate_length(reader) for reader in readers]
+
+    # read data into a pre-allocated array
+    nsamples = time * 2 * 3600 * fs
+    data = np.zeros_like(reader.shape[0], 2 * nsamples)
+    for idx, reader in enumerate(readers):
+        start, stop = idx * nsamples, (idx+1) * nsamples
+        data[:, start : stop] = reader.read(0, nsamples)
+        reader.close()
 
     header = copy.deepcopy(readers[0].header)
-    header.num_records = data.shape[-1] / header.samples_per_record[0]
+    header['num_records'] = data.shape[-1] / header.samples_per_record[0]
 
     name = path.stem + '_COMBINED'
     parent = path.parent
@@ -113,7 +130,6 @@ def combine(path, other, time, fs, save_dir=None):
         writer.write(header, data, channels=reader.channels)
 
 
-
 if __name__ == '__main__':
 
     dirpath = '/media/matt/Zeus/STXBP1_High_Dose_Exps_3/short_files/'
@@ -122,4 +138,4 @@ if __name__ == '__main__':
     paired = pair_paths(shorts)
 
     path, other = paired[0]
-    combine(path, other, time=24, fs=5000, save_dir=None)
+    readers = combine(path, other, time=24, fs=5000, save_dir=None)
