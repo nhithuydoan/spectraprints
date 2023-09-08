@@ -15,7 +15,7 @@ def validate_lengths(dirpath, minimum=24):
 
     pass
 
-def locate(dirpath, fs, expected=72):
+def locate(dirpath, fs, expected=72, minimum=24):
     """Locates EDF files in dirpath whose duration in hours is less than
     expected.
 
@@ -37,6 +37,9 @@ def locate(dirpath, fs, expected=72):
     paths = list(Path(dirpath).glob('*.edf'))
     for fp in paths:
         reader = edf.Reader(fp)
+        if reader.shape[-1]/(3600*fs) < minimum:
+            msg = f'This file -- {fp} -- is shorter than 24 hours!!'
+            raise ValueError(msg)
         if reader.shape[-1] / (3600 * fs) < expected:
             result.append(reader.path)
         reader.close()
@@ -67,7 +70,7 @@ def pair_paths(paths, pattern=r'[^_]+'):
 
         paths.remove(matching)
         # add path and matching path to results
-        result.append((path, matching))
+        result.append(sorted([path, matching]))
 
     return result
 
@@ -122,6 +125,8 @@ if __name__ == '__main__':
 
     shorts = locate(dirpath, fs=5000)
     paired = pair_paths(shorts)
-    for tup in paired:
+    for tup in range(len(paired)):
         path, other = paired[tup]
-        header = combine(path, other, time=24, fs=5000, save_dir=None)
+        print([path, other])
+       # header = combine(path, other, time=24, fs=5000, save_dir=None)
+
