@@ -22,7 +22,7 @@ from spectraprints.core import concurrency
 from spectraprints.masking import masks
 
 
-def preprocess(epath, savedir, channels=[0,1,2], fs=5000, M=20, fstop=60,
+def preprocess(epath, savedir, channels=[0, 1, 2, 3], fs=5000, M=20, fstop=60,
                fwidth=6, nominally=[48, 72], chunksize=30e5, axis=-1,
                returning=False, verbose=False):
     """Preprocesses and EDF file at path by constructing, notch filtering and
